@@ -4,11 +4,13 @@ from discord.ext import tasks, commands
 import datetime
 from dotenv import load_dotenv
 
+# .env laden (lokal – in Railway werden die Variablen direkt im Dashboard gesetzt)
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
+CHANNEL_IDS = [int(id.strip()) for id in os.getenv("TARGET_CHANNEL_ID").split(",")]
 
+# Discord-Intents aktivieren
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
@@ -16,32 +18,42 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Bot ready → starte Cleanup
 @bot.event
 async def on_ready():
     print(f"✅ Bot ist eingeloggt als {bot.user}")
     cleanup_old_messages.start()
 
+# Cleanup-Task: läuft automatisch alle 24 Stunden
 @tasks.loop(hours=24)
 async def cleanup_old_messages():
     await bot.wait_until_ready()
-
-    channel = bot.get_channel(CHANNEL_ID)
-    if not channel:
-        print("⚠️ Channel nicht gefunden.")
-        return
-
-    print(f"🧹 Starte Cleanup für Channel: {channel.name}")
     now = datetime.datetime.utcnow()
     cutoff = now - datetime.timedelta(weeks=4)
-    deleted = 0
 
-    async for message in channel.history(limit=None, oldest_first=True):
-        if message.created_at < cutoff:
-            try:
-                await message.delete()
-                deleted += 1
-            except Exception as e:
-                print(f"❌ Fehler beim Löschen: {e}")
-    print(f"✅ {deleted} alte Nachrichten gelöscht.")
+    for channel_id in CHANNEL_IDS:
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            print(f"⚠️ Channel mit ID {channel_id} nicht gefunden.")
+            continue
 
+        print(f"🧹 Starte Cleanup für Channel: {channel.name}")
+        deleted = 0
+
+        try:
+            async for message in channel.history(limit=None, oldest_first=True):
+                if message.created_at < cutoff:
+                    try:
+                        await message.delete()
+                        deleted += 1
+                    except discord.Forbidden:
+                        print(f"🚫 Keine Berechtigung zum Löschen in {channel.name}.")
+                    except discord.HTTPException as e:
+                        print(f"❌ Fehler beim Löschen: {e}")
+        except Exception as e:
+            print(f"❌ Fehler beim Zugriff auf Channel {channel_id}: {e}")
+
+        print(f"✅ {deleted} alte Nachrichten gelöscht in {channel.name}")
+
+# Starte den Bot
 bot.run(TOKEN)
