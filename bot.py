@@ -4,31 +4,33 @@ from discord.ext import tasks, commands
 import datetime
 from dotenv import load_dotenv
 
-# .env laden (lokal – in Railway werden die Variablen direkt im Dashboard gesetzt)
+# Lade Umgebungsvariablen aus .env (für lokale Tests)
 load_dotenv()
 
+# Discord-Bot Token und Channel-IDs laden
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_IDS = [int(id.strip()) for id in os.getenv("TARGET_CHANNEL_ID").split(",")]
 
-# Discord-Intents aktivieren
+# Intents aktivieren
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.message_content = True
 
+# Bot erstellen
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Bot ready → starte Cleanup
+# Wenn der Bot bereit ist, starte den Cleanup-Task
 @bot.event
 async def on_ready():
     print(f"✅ Bot ist eingeloggt als {bot.user}")
     cleanup_old_messages.start()
 
-# Cleanup-Task: läuft automatisch alle 24 Stunden
+# Wiederkehrender Task: läuft alle 24 Stunden
 @tasks.loop(hours=24)
 async def cleanup_old_messages():
     await bot.wait_until_ready()
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
     cutoff = now - datetime.timedelta(weeks=4)
 
     for channel_id in CHANNEL_IDS:
@@ -51,7 +53,7 @@ async def cleanup_old_messages():
                     except discord.HTTPException as e:
                         print(f"❌ Fehler beim Löschen: {e}")
         except Exception as e:
-            print(f"❌ Fehler beim Zugriff auf Channel {channel_id}: {e}")
+            print(f"❌ Fehler beim Zugriff auf Channel {channel.name}: {e}")
 
         print(f"✅ {deleted} alte Nachrichten gelöscht in {channel.name}")
 
