@@ -1,32 +1,33 @@
 import os
+import asyncio
 import discord
 from discord.ext import tasks, commands
 import datetime
 from dotenv import load_dotenv
 
-# Lade Umgebungsvariablen aus .env (für lokale Tests)
+# .env laden (lokal), in Railway werden diese als Umgebungsvariablen gesetzt
 load_dotenv()
 
-# Discord-Bot Token und Channel-IDs laden
+# Bot-Token und Channel-IDs aus Environment
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_IDS = [int(id.strip()) for id in os.getenv("TARGET_CHANNEL_ID").split(",")]
 
-# Intents aktivieren
+# Discord Intents
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.message_content = True
 
-# Bot erstellen
+# Bot-Instanz
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Wenn der Bot bereit ist, starte den Cleanup-Task
+# Starte den Cleanup-Task, wenn der Bot bereit ist
 @bot.event
 async def on_ready():
     print(f"✅ Bot ist eingeloggt als {bot.user}")
     cleanup_old_messages.start()
 
-# Wiederkehrender Task: läuft alle 24 Stunden
+# Cleanup-Task: läuft alle 24 Stunden
 @tasks.loop(hours=24)
 async def cleanup_old_messages():
     await bot.wait_until_ready()
@@ -47,6 +48,7 @@ async def cleanup_old_messages():
                 if message.created_at < cutoff:
                     try:
                         await message.delete()
+                        await asyncio.sleep(0.5)  # Rate Limit beachten
                         deleted += 1
                     except discord.Forbidden:
                         print(f"🚫 Keine Berechtigung zum Löschen in {channel.name}.")
@@ -57,5 +59,5 @@ async def cleanup_old_messages():
 
         print(f"✅ {deleted} alte Nachrichten gelöscht in {channel.name}")
 
-# Starte den Bot
+# Bot starten
 bot.run(TOKEN)
